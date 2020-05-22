@@ -5,7 +5,8 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [cheshire "5.10.0"]
-                 [fundingcircle/jackdaw "0.7.4"]]
+                 [fundingcircle/jackdaw "0.7.4"]
+                 [com.google.cloud/google-cloud-storage "1.101.0"]]
   :main ^:skip-aot clinvar-scv.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
