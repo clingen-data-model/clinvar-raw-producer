@@ -43,7 +43,34 @@
 
 (def manifest  ["20200515T153000/clinical_assertion/creates/000000000000"
                 "20200515T153000/clinical_assertion/creates/000000000001"
-                "20200515T153000/clinical_assertion_observation/creates/000000000000"])
+                "20200515T153000/clinical_assertion_observation/creates/000000000000"
+                "20200515T153000/gene/creates/000000000000"
+                "20200515T153000/variation/creates/000000000000"
+                "20200515T153000/variation/creates/000000000001"
+                "20200515T153000/variation/creates/000000000002"
+                "20200515T153000/variation/creates/000000000003"
+                "20200515T153000/variation/creates/000000000004"
+                "20200515T153000/gene_association/creates/000000000000"
+                "20200515T153000/variation_archive/creates/000000000000"
+                "20200515T153000/submitter/creates/000000000000"
+                "20200515T153000/submission/creates/000000000000"])
+
+(def order-of-processing [{:type "gene"}
+                          {:type "variation" :filter {:field :subclass_type :value "SimpleAllele"}}
+                          {:type "variation" :filter {:field :subclass_type :value "Haplotype"}}
+                          {:type "variation" :filter {:field :subclass_type :value "Genotype"}}
+                          {:type "gene_association"}
+                          {:type "variation_archive"}
+                          {:type "submitter"}
+                          {:type "submission"}
+                          {:type "clinical_assertion"}
+                          {:type "clinical_assertion_observation"}])
+
+(def delete-order-of-processing (reverse order-of-processing))
+
+(def operation {:create {:order order-of-processing}
+                :update {:order order-of-processing}
+                :delete {:order delete-order-of-processing}})
 
 (def gc-storage (.getService (StorageOptions/getDefaultInstance)))
 
@@ -53,17 +80,19 @@
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
-  [{:keys [producer topic bucket file entity-type datetime event-type]}]
-
+  [{:keys [producer topic bucket file entity-type datetime event-type filter-field]}]
+  (println filter)
   (let [blob-id (BlobId/of bucket file)
         blob (.get gc-storage blob-id)]
     (with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
-      (let [lines (line-seq rdr)]
-        (doseq [line (take 5 lines)]
-          (let [content  (assoc (json/parse-string line true) :type entity-type)
-                key (str (:id content) "_" datetime)
+      (let [lines (map #(assoc (json/parse-string % true) :type entity-type) (line-seq rdr))
+            records (if filter-field
+                      (filter #(= (:value filter-field) (get % (:field filter-field))) lines)
+                      lines)]
+        (doseq [content (take 5 records)]
+          (let [key (str (:id content) "_" datetime)
                 event {:time datetime :type event-type :content content}]
-            (println line)
+            (println content)
             (send-update-to-exchange producer topic {:key key
                                                      :value (json/generate-string event)})))))))
 
@@ -76,8 +105,9 @@
 
   ; 2. process the folder structure in order of tables for create-update and then reverse for deletes
 
-    ; 2a. assume we have bucket and manifest (vector of files to process with full paths in bucket.
-  (doseq [file manifest]
+  ; forward order of processing loop
+  (doseq [record-type order-of-processing
+          file (filter #(re-find (re-pattern (str "/" (:type record-type) "/")) % ) manifest )]
     (let [[_ entity-type event-type _] (s/split file #"/")]
       (process-clinvar-drop-file {:producer producer
                                   :topic topic
@@ -85,7 +115,9 @@
                                   :file file
                                   :entity-type entity-type
                                   :datetime release-date
-                                  :event-type event-type}))))
+                                  :event-type event-type
+                                  :filter-field (:filter record-type)}))))
+
 
 (defn listen-for-clinvar-drop
   "listens to consumer topic for dsp clinvar drop notifications."

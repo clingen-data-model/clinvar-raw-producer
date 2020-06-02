@@ -1,0 +1,13 @@
+1) Gene
+2) Variation  (SimpleAllele, Haplotype, GenoType order) - var struct building here, VariationSet representation challenge for clinvar variation id, names, etc...
+3) GeneAssociation (maybe this should be bundled with VarArchVariation?)
+4) VariationArchive
+5) TraitMapping (must precede traitset/trait in order to link conditionlist/rcvaccession.traitsets)
+6) TraitSet/Trait - (bundle) ConditionLists (indirect through the RCVAccession association)
+7) RCVAccession
+8) Submitter
+9) Submission
+10) ClinicalAssertion
+11) ClinicalAssertionVariation - (Simple/Hapl/Geno order)  variant structure building here (VRS, CAID, CACNID)
+12) ClinicalAssertionTraitSet/Trait (bundle)
+13) ClinicalAssertionObservedIn - major unpacking here - could lead to nested sample evidence data in separate tables/structures
