@@ -21,6 +21,7 @@
   "Expects, at a minimum, :user and :password in opts. "
   [opts]
   {"ssl.endpoint.identification.algorithm" "https"
+   "compression.type"                      "gzip"
    "sasl.mechanism"                        "PLAIN"
    "request.timeout.ms"                    "20000"
    "bootstrap.servers"                     (:kafka-host opts)
@@ -30,7 +31,7 @@
    "value.serializer"                      "org.apache.kafka.common.serialization.StringSerializer"
    "key.deserializer"                      "org.apache.kafka.common.serialization.StringDeserializer"
    "value.deserializer"                    "org.apache.kafka.common.serialization.StringDeserializer"
-   "group.id"                              "dsp_clinvar_drop"
+   "group.id"                              "dsp_clinvar_producer"
    "sasl.jaas.config"                      (str "org.apache.kafka.common.security.plain.PlainLoginModule required username="\"
                                                 (:kafka-user opts) \"" password="\" (:kafka-password opts) \"";")})
 
@@ -86,20 +87,18 @@
 
 (def delete-order-of-processing (reverse order-of-processing))
 
-(def event-procedures [{:event-type :create :order order-of-processing :filter-string "creates"}
-                       {:event-type :update :order order-of-processing  :filter-string "updates"}
-                       {:event-type :delete :order delete-order-of-processing :filter-string "deletes"}])
+(def event-procedures [{:event-type :create :order order-of-processing :filter-string "created"}
+                       {:event-type :update :order order-of-processing  :filter-string "updated"}
+                       {:event-type :delete :order delete-order-of-processing :filter-string "deleted"}])
 
 (def gc-storage (.getService (StorageOptions/getDefaultInstance)))
 
 (defn send-update-to-exchange [producer topic {:keys [key value]}]
-  (println "sending message: " key)
   (jc/send! producer (jd/->ProducerRecord {:topic-name topic} key value)))
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
   [{:keys [producer topic bucket file entity-type datetime event-type filter-field]}]
-  (println filter)
   (let [blob-id (BlobId/of bucket file)
         blob (.get gc-storage blob-id)]
     (println file)
@@ -112,7 +111,6 @@
           (doseq [content records]
             (let [key (str (:id content) "_" datetime)
                   event {:time datetime :type event-type :content content}]
-              (println content)
               (send-update-to-exchange producer topic {:key key
                                                        :value (json/generate-string event)})))))
       (println "file not found"))))
@@ -129,32 +127,37 @@
   ; this will return the folder and bucket and file manifest
   ;... pull out manifest here
 
-  ; need to verify all entries in manifest are processed else warning and logging on unknown files.
+  (let [parsed-drop-record (json/parse-string msg true)]
+
+    ;; need to verify all entries in manifest are processed else warning and logging on unknown files.
 
 
-  ; 2. process the folder structure in order of tables for create-update and then reverse for deletes
-  (doseq [procedure event-procedures]
-    (let [files (filter-files (:filter-string procedure) manifest)]
+    ;; 2. process the folder structure in order of tables for create-update and then reverse for deletes
+    (doseq [procedure event-procedures]
+      (let [files (filter-files (:filter-string procedure) (:files parsed-drop-record))]
 
-    (doseq [record-type (:order procedure)
-            file (filter-files (:type record-type) files )]
-      (process-clinvar-drop-file {:producer producer
-                                  :topic topic
-                                  :bucket bucket
-                                  :file file
-                                  :entity-type (:type record-type)
-                                  :datetime release-date
-                                  :event-type (:event-type procedure)
-                                  :filter-field (:filter record-type)})))))
+        (doseq [record-type (:order procedure)
+                file (filter-files (:type record-type) files )]
+          (process-clinvar-drop-file {:producer producer
+                                      :topic topic
+                                      :bucket bucket
+                                      :file file
+                                      :entity-type (:type record-type)
+                                      :datetime release-date
+                                      :event-type (:event-type procedure)
+                                      :filter-field (:filter record-type)}))))))
 
+
+(def listen-for-drop (atom true))
 
 (defn listen-for-clinvar-drop
   "listens to consumer topic for dsp clinvar drop notifications."
   [opts]
+  (println "listening for clinvar drop")
   (with-open [consumer (jc/consumer (kafka-config opts))
               producer (jc/producer (kafka-config opts))]
     (jc/subscribe consumer [{:topic-name (:kafka-consumer-topic opts)}])
-    (while true
+    (while @listen-for-drop
       (let [msgs (jc/poll consumer 100)]
         (doseq [m msgs]
           (println m)
@@ -162,6 +165,4 @@
 
 (defn -main
   [& args]
- ; (listen-for-clinvar-drop app-config))
-  (let [producer (jc/producer (kafka-config app-config))]
-    (process-clinvar-drop producer (:kafka-producer-topic app-config) nil)))
+  (listen-for-clinvar-drop app-config))
