@@ -162,4 +162,6 @@
 
 (defn -main
   [& args]
-  (listen-for-clinvar-drop app-config))
+ ; (listen-for-clinvar-drop app-config))
+  (let [producer (jc/producer (kafka-config app-config))]
+    (process-clinvar-drop producer (:kafka-producer-topic app-config) nil)))
