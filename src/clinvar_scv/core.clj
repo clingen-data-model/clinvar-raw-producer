@@ -11,11 +11,13 @@
            java.io.BufferedReader)
   (:gen-class))
 
+(def messages-to-consume (atom []))
+
 (def app-config {:kafka-host     "pkc-4yyd6.us-east1.gcp.confluent.cloud:9092"
                  :kafka-user     (System/getenv "KAFKA_USER")
                  :kafka-password (System/getenv "KAFKA_PASSWORD")
                  :kafka-producer-topic    "clinvar-raw"
-                 :kafka-consumer-topic    "broad_dsp_clinvar"})
+                 :kafka-consumer-topic    "broad-dsp-clinvar"})
 
 (defn kafka-config
   "Expects, at a minimum, :user and :password in opts. "
@@ -35,35 +37,35 @@
    "sasl.jaas.config"                      (str "org.apache.kafka.common.security.plain.PlainLoginModule required username="\"
                                                 (:kafka-user opts) \"" password="\" (:kafka-password opts) \"";")})
 
-(def file-to-process "files/baseline/clinical_assertion_creates_000000000000")
+;; (def file-to-process "files/baseline/clinical_assertion_creates_000000000000")
 (def producer-topic (:kafka-producer-topic app-config))
-(def release-date "2020-05-21T20:02:00Z")
+;; (def release-date "2020-05-21T20:02:00Z")
 
 (def project "broad-dsp-monster-clingen-dev")
 (def bucket "broad-dsp-monster-clingen-dev-ingest-results")
 
-(def manifest  ["20200515T153000/clinical_assertion/creates/000000000000",
-                "20200515T153000/clinical_assertion/creates/000000000001",
-                "20200515T153000/clinical_assertion_observation/creates/000000000000",
-                "20200515T153000/clinical_assertion_trait/creates/000000000000",
-                "20200515T153000/clinical_assertion_trait_set/creates/000000000000",
-                "20200515T153000/clinical_assertion_variation/creates/000000000000",
-                "20200515T153000/gene/creates/000000000000",
-                "20200515T153000/gene_association/creates/000000000000",
-                "20200515T153000/gene_association/creates/000000000001",
-                "20200515T153000/gene_association/creates/000000000002",
-                "20200515T153000/rcv_accession/creates/000000000000",
-                "20200515T153000/submission/creates/000000000000",
-                "20200515T153000/submitter/creates/000000000000",
-                "20200515T153000/trait/creates/000000000000",
-                "20200515T153000/trait_mapping/creates/000000000000",
-                "20200515T153000/trait_set/creates/000000000000",
-                "20200515T153000/variation/creates/000000000000",
-                "20200515T153000/variation/creates/000000000001",
-                "20200515T153000/variation/creates/000000000002",
-                "20200515T153000/variation/creates/000000000003",
-                "20200515T153000/variation/creates/000000000004",
-                "20200515T153000/variation_archive/creates/000000000000"])
+;; (def manifest  ["20200515T153000/clinical_assertion/creates/000000000000",
+;;                 "20200515T153000/clinical_assertion/creates/000000000001",
+;;                 "20200515T153000/clinical_assertion_observation/creates/000000000000",
+;;                 "20200515T153000/clinical_assertion_trait/creates/000000000000",
+;;                 "20200515T153000/clinical_assertion_trait_set/creates/000000000000",
+;;                 "20200515T153000/clinical_assertion_variation/creates/000000000000",
+;;                 "20200515T153000/gene/creates/000000000000",
+;;                 "20200515T153000/gene_association/creates/000000000000",
+;;                 "20200515T153000/gene_association/creates/000000000001",
+;;                 "20200515T153000/gene_association/creates/000000000002",
+;;                 "20200515T153000/rcv_accession/creates/000000000000",
+;;                 "20200515T153000/submission/creates/000000000000",
+;;                 "20200515T153000/submitter/creates/000000000000",
+;;                 "20200515T153000/trait/creates/000000000000",
+;;                 "20200515T153000/trait_mapping/creates/000000000000",
+;;                 "20200515T153000/trait_set/creates/000000000000",
+;;                 "20200515T153000/variation/creates/000000000000",
+;;                 "20200515T153000/variation/creates/000000000001",
+;;                 "20200515T153000/variation/creates/000000000002",
+;;                 "20200515T153000/variation/creates/000000000003",
+;;                 "20200515T153000/variation/creates/000000000004",
+;;                 "20200515T153000/variation_archive/creates/000000000000"])
 
 
 (def order-of-processing [{:type "gene"}
@@ -108,7 +110,7 @@
               records (if filter-field
                         (filter #(= (:value filter-field) (get % (:field filter-field))) lines)
                         lines)]
-          (doseq [content records]
+          (doseq [content (take 5 records)]
             (let [key (str (:id content) "_" datetime)
                   event {:time datetime :type event-type :content content}]
               (send-update-to-exchange producer topic {:key key
@@ -143,26 +145,35 @@
                                       :bucket bucket
                                       :file file
                                       :entity-type (:type record-type)
-                                      :datetime release-date
+                                      :datetime (:release_date parsed-drop-record)
                                       :event-type (:event-type procedure)
                                       :filter-field (:filter record-type)}))))))
 
 
 (def listen-for-drop (atom true))
 
+(defn process-drop-messages
+  [opts]
+  (with-open [producer (jc/producer (kafka-config opts))]
+    (while @listen-for-drop
+      (when-let [msg (first @messages-to-consume)]
+        (process-clinvar-drop producer (:kafka-producer-topic opts) (:value msg))
+        (swap! messages-to-consume #(into [] (rest %)))
+        (Thread/sleep 100)))))
+
 (defn listen-for-clinvar-drop
   "listens to consumer topic for dsp clinvar drop notifications."
   [opts]
   (println "listening for clinvar drop")
-  (with-open [consumer (jc/consumer (kafka-config opts))
-              producer (jc/producer (kafka-config opts))]
+  (with-open [consumer (jc/consumer (kafka-config opts))]
     (jc/subscribe consumer [{:topic-name (:kafka-consumer-topic opts)}])
     (while @listen-for-drop
       (let [msgs (jc/poll consumer 100)]
         (doseq [m msgs]
           (println m)
-          (process-clinvar-drop producer (:kafka-producer-topic opts) (:value m)))))))
+          (swap! messages-to-consume conj m))))))
 
 (defn -main
   [& args]
+  (.start (Thread. (partial process-drop-messages app-config)))
   (listen-for-clinvar-drop app-config))
