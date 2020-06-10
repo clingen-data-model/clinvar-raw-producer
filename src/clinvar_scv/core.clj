@@ -110,7 +110,7 @@
               records (if filter-field
                         (filter #(= (:value filter-field) (get % (:field filter-field))) lines)
                         lines)]
-          (doseq [content (take 5 records)]
+          (doseq [content records]
             (let [key (str (:id content) "_" datetime)
                   event {:time datetime :type event-type :content content}]
               (send-update-to-exchange producer topic {:key key
