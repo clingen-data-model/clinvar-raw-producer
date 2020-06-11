@@ -16,7 +16,8 @@
            java.nio.channels.Channels
            java.io.BufferedReader
            (java.util Date TimeZone)
-           (java.text SimpleDateFormat))
+           (java.text SimpleDateFormat)
+           (java.lang Thread))
   (:gen-class))
 
 
@@ -29,13 +30,34 @@
   (.setTimeZone fmt (TimeZone/getTimeZone "UTC"))
   (.format fmt now)))
 
-;(def project "broad-dsp-monster-clingen-dev")
+(def messages-to-consume (atom []))
+
 (def bucket "broad-dsp-monster-clingen-dev-ingest-results")
 
-; Example manifest vector
-;(def manifest  ["20200515T153000/clinical_assertion/creates/000000000000"
-;                "20200515T153000/clinical_assertion/creates/000000000001"
-;                "20200515T153000/clinical_assertion_observation/creates/000000000000"])
+(def order-of-processing [{:type "gene"}
+                          {:type "variation" :filter {:field :subclass_type :value "SimpleAllele"}}
+                          {:type "variation" :filter {:field :subclass_type :value "Haplotype"}}
+                          {:type "variation" :filter {:field :subclass_type :value "Genotype"}}
+                          {:type "gene_association"}
+                          {:type "variation_archive"}
+                          {:type "trait"}
+                          {:type "trait_set"}
+                          {:type "rcv_accession"}
+                          {:type "submitter"}
+                          {:type "submission"}
+                          {:type "clinical_assertion"}
+                          {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "SimpleAllele"}}
+                          {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "Haplotype"}}
+                          {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "Genotype"}}
+                          {:type "clinical_assertion_trait"}
+                          {:type "clinical_assertion_trait_set"}
+                          {:type "trait_mapping"}])
+
+(def delete-order-of-processing (reverse order-of-processing))
+
+(def event-procedures [{:event-type :create :order order-of-processing :filter-string "created"}
+                       {:event-type :update :order order-of-processing  :filter-string "updated"}
+                       {:event-type :delete :order delete-order-of-processing :filter-string "deleted"}])
 
 (def gc-storage (.getService (StorageOptions/getDefaultInstance)))
 
@@ -62,44 +84,63 @@
 
             (send-update-to-exchange producer topic {:key   key
                                                      :value (json/generate-string event)})))))))
+(defn filter-files
+  [filter-string files]
+  (filter #(re-find (re-pattern (str "/" filter-string "/")) % ) files ))
 
 (defn process-clinvar-drop
   "parses and processes the clinvar drop notification from dsp."
-  [producer producer-topic file-listing]
+  [producer topic msg]
 
   ; 1. parse the drop message to determine where the files are
   ; this will return the folder and bucket and file manifest
-  (debugf "File listing: %s" (s/join "," file-listing))
-  ; 2. process the folder structure in order of tables for create-update and then reverse for deletes
+  ;... pull out manifest here
+  (debugf "File listing message: %s" (msg))
+  (let [parsed-drop-record (json/parse-string msg true)]
 
-    ; 2a. assume we have bucket and manifest (vector of files to process with full paths in bucket.
-  (doseq [file file-listing]
-    (let [[_ entity-type event-type _] (s/split file #"/")]
-      (process-clinvar-drop-file {:producer producer
-                                  :topic producer-topic
-                                  :bucket bucket
-                                  :file file
-                                  :entity-type entity-type
-                                  :datetime get-release-date
-                                  :event-type event-type}))))
+    ;; need to verify all entries in manifest are processed else warning and logging on unknown files.
+
+    ;; 2. process the folder structure in order of tables for create-update and then reverse for deletes
+    (doseq [procedure event-procedures]
+      (let [files (filter-files (:filter-string procedure) (:files parsed-drop-record))]
+
+        (doseq [record-type (:order procedure)
+                file (filter-files (:type record-type) files )]
+          (process-clinvar-drop-file {:producer producer
+                                      :topic topic
+                                      :bucket bucket
+                                      :file file
+                                      :entity-type (:type record-type)
+                                      :datetime (:release_date parsed-drop-record)
+                                      :event-type (:event-type procedure)
+                                      :filter-field (:filter record-type)}))))))
+
+
+(def listen-for-drop (atom true))
+
+(defn process-drop-messages
+  [opts]
+  (with-open [producer (jc/producer (cfg/kafka-config opts))]
+    (while @listen-for-drop
+      (when-let [msg (first @messages-to-consume)]
+        (process-clinvar-drop producer (:kafka-producer-topic opts) (:value msg))
+        (swap! messages-to-consume #(into [] (rest %)))
+        (Thread/sleep 100)))))
 
 (defn listen-for-clinvar-drop
   "Listens to consumer topic for dsp clinvar drop notifications in `manifest` file list format.
   Produces output messages on producer topic."
   [opts]
-  (debugf "Opening consumer and producer kafka streams")
-  (with-open [consumer (jc/consumer (cfg/kafka-config opts))
-              producer (jc/producer (cfg/kafka-config opts))]
-    (debugf "Subscribing to consumer topic %s" (:kafka-consumer-topic opts))
+  (debug "listening for clinvar drop")
+  (with-open [consumer (jc/consumer (cfg/kafka-config opts))]
     (jc/subscribe consumer [{:topic-name (:kafka-consumer-topic opts)}])
     (while true
       (let [msgs (jc/poll consumer 100)]
         (doseq [m msgs]
-          (infof "Received message %s\n" m)
-          ; The message contents is within the ConsumerRecord as :value
-          ; The value is just a list of file paths, no additional processing needed here
-          (process-clinvar-drop producer (:kafka-producer-topic opts) (:value m)))))))
+          (tracef "Received message: %s" m)
+          (swap! messages-to-consume conj m))))))
 
 (defn -main
   [& args]
+  (.start (Thread. (partial process-drop-messages cfg/app-config)))
   (listen-for-clinvar-drop cfg/app-config))
