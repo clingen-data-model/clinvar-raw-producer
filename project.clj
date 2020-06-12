@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [cheshire "5.10.0"]
                  [fundingcircle/jackdaw "0.7.4"]
-                 [com.google.cloud/google-cloud-storage "1.101.0"]]
+                 [com.google.cloud/google-cloud-storage "1.101.0"]
+                 [com.taoensso/timbre "4.10.0"]]
   :main ^:skip-aot clinvar-scv.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
