@@ -20,7 +20,6 @@
            (java.lang Thread))
   (:gen-class))
 
-
 ;(def file-to-process "files/baseline/clinical_assertion_creates_000000000000")
 ;(def producer-topic (:kafka-producer-topic cfg/app-config))
 ;(def release-date "2020-05-21T20:02:00Z")
@@ -63,34 +62,42 @@
 
 (defn send-update-to-exchange [producer topic {:keys [key value]}]
   (tracef "Sending message to topic %s: %s:%s" topic key value)
-  ;(println "sending message: " key)
   (jc/send! producer (jd/->ProducerRecord {:topic-name topic} key value)))
+
+(defn google-storage-line-reader [bucket filename]
+  (let [blob-id (BlobId/of bucket filename)
+        blob (.get gc-storage blob-id)]
+    (tracef "Opening reader to blob %s/%s" bucket filename)
+    (with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
+      (rdr)))
+  )
+
+(defn line-to-event [line entity-type datetime event-type]
+  "Parses a single line of a drop file, transforms into an event object map"
+  (let [content (assoc (json/parse-string line true) :type entity-type)
+                        key (str (:id content) "_" datetime)
+                        event {:time datetime :type event-type :content content}]
+                        {:key key :value (json/generate-string event)}))
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
-  [{:keys [producer topic bucket file entity-type datetime event-type]}]
-  (debugf "Processing dropped file %s for entity-type %s and event-type %s"
-          file entity-type event-type)
-  (let [blob-id (BlobId/of bucket file)
-        blob (.get gc-storage blob-id)]
-    (tracef "Opening reader to blob %s/%s" bucket file)
-    (with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
-      (let [lines (line-seq rdr)]
-        (doseq [line (take 5 lines)]
-          (tracef "Parsing file line %s" line)
-          (let [content (assoc (json/parse-string line true) :type entity-type)
-                key (str (:id content) "_" datetime)
-                event {:time datetime :type event-type :content content}]
+  [{:keys [reader entity-type datetime event-type file-read-limit]
+   :or {file-read-limit ##Inf}}]
+  (debugf "Processing dropped file for entity-type %s and event-type %s"
+          entity-type event-type)
+  (let [lines (line-seq reader)]
+    (debugf "Taking first %s lines" file-read-limit)
+      (map #(line-to-event % entity-type datetime event-type) (take file-read-limit lines))))
 
-            (send-update-to-exchange producer topic {:key   key
-                                                     :value (json/generate-string event)})))))))
+
 (defn filter-files
+  "Filters a collection of file strings containing a path segment which matches `filter-string`"
   [filter-string files]
   (filter #(re-find (re-pattern (str "/" filter-string "/")) % ) files ))
 
 (defn process-clinvar-drop
-  "parses and processes the clinvar drop notification from dsp."
-  [producer topic msg]
+  "Parses and processes the clinvar drop notification from dsp, returns a seq of output messages"
+  [msg]
 
   ; 1. parse the drop message to determine where the files are
   ; this will return the folder and bucket and file manifest
@@ -105,25 +112,28 @@
       (let [files (filter-files (:filter-string procedure) (:files parsed-drop-record))]
 
         (doseq [record-type (:order procedure)
-                file (filter-files (:type record-type) files )]
-          (process-clinvar-drop-file {:producer producer
-                                      :topic topic
-                                      :bucket bucket
-                                      :file file
-                                      :entity-type (:type record-type)
-                                      :datetime (:release_date parsed-drop-record)
-                                      :event-type (:event-type procedure)
-                                      :filter-field (:filter record-type)}))))))
+                file (filter-files (:type record-type) files)]
+          (let [file-reader (google-storage-line-reader bucket file)]
+            (process-clinvar-drop-file {:reader file-reader
+                                        :entity-type (:type record-type)
+                                        :datetime (:release_date parsed-drop-record)
+                                        :event-type (:event-type procedure)
+                                        :filter-field (:filter record-type)})))))))
 
 
 (def listen-for-drop (atom true))
 
 (defn process-drop-messages
+  "Process all outstanding messages from input topic"
   [opts]
+  (debug "Starting process-drop-messages")
   (with-open [producer (jc/producer (cfg/kafka-config opts))]
     (while @listen-for-drop
       (when-let [msg (first @messages-to-consume)]
-        (process-clinvar-drop producer (:kafka-producer-topic opts) (:value msg))
+        (infof "Sending processed messages to output topic %s" (:kafka-producer-topic opts))
+        (doseq [msg (process-clinvar-drop (:value msg))]
+          (send-update-to-exchange producer (:kafka-producer-topic opts) msg))
+
         (swap! messages-to-consume #(into [] (rest %)))
         (Thread/sleep 100)))))
 
@@ -131,7 +141,7 @@
   "Listens to consumer topic for dsp clinvar drop notifications in `manifest` file list format.
   Produces output messages on producer topic."
   [opts]
-  (debug "listening for clinvar drop")
+  (debug "Listening for clinvar drop")
   (with-open [consumer (jc/consumer (cfg/kafka-config opts))]
     (jc/subscribe consumer [{:topic-name (:kafka-consumer-topic opts)}])
     (while true
@@ -143,4 +153,5 @@
 (defn -main
   [& args]
   (.start (Thread. (partial process-drop-messages cfg/app-config)))
+
   (listen-for-clinvar-drop cfg/app-config))
