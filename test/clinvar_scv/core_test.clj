@@ -1,8 +1,9 @@
 (ns clinvar-scv.core-test
   (:require [clojure.test :refer :all]
-            [clinvar-scv.core :refer :all]
+            [clinvar-scv.core :as core :refer :all]
             [cheshire.core :as json]
-            [clinvar-scv.config :as cfg])
+            [clinvar-scv.config :as cfg]
+            [clojure.spec.alpha :as spec])
   )
 
 (deftest bucket-test
