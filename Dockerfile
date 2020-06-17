@@ -13,7 +13,7 @@ RUN lein uberjar
 
 # Using image without lein for deployment.
 FROM openjdk:11
-MAINTAINER Larry Babb <lbabb@broadinstitute.org>
+MAINTAINER Kyle Ferriter <kferrite@broadinstitute.org>
 
 COPY --from=builder /usr/src/app/target/uberjar/clinvar-scv.jar /app/clinvar-scv.jar
 
