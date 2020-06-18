@@ -7,7 +7,6 @@
             [clojure.string :as s]
             [clojure.core :as core]
             [clinvar-scv.config :as cfg]
-            [clojure.spec.alpha :as spec]
             [taoensso.timbre :as timbre
              :refer [log trace debug info warn error fatal report
                      logf tracef debugf infof warnf errorf fatalf reportf
@@ -61,11 +60,6 @@
 
 (def gc-storage (.getService (StorageOptions/getDefaultInstance)))
 
-(spec/def :clinical-assertion/id #(re-matches #"SCV\d+" %))
-
-(spec/def ::clinical-assertion
-  (spec/keys :req-un [:clinical-assertion/id]))
-
 
 (defn send-update-to-exchange [producer topic {:keys [key value]}]
   (tracef "Sending message to topic %s: %s:%s" topic key value)
@@ -81,15 +75,9 @@
 (defn line-to-event [line entity-type datetime event-type]
   "Parses a single line of a drop file, transforms into an event object map"
   (let [content (assoc (json/parse-string line true) :type entity-type)
-                        key (str (:id content) "_" datetime)
-                        event {:time datetime :type event-type :content content}
-        has-valid-spec (case entity-type
-                         "clinical_assertion" (spec/valid? ::clinical-assertion line)
-                         :default true)]
-    (if has-valid-spec
-      {:key key :value (json/generate-string event)}
-      (do (warnf "invalid format " line)
-          ::invalid-record))))
+                        key (str entity-type "_" (:id content) "_" datetime)
+                        event {:time datetime :type event-type :content content}]
+    {:key key :data event}))
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
