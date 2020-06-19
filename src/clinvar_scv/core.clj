@@ -80,7 +80,7 @@
         event {:time datetime :type event-type :content content}
         has-valid-spec (case entity-type
                          "clinical_assertion" (spec/valid? ::clinical-assertion content)
-                         :default true)]
+                         true)]
     (if has-valid-spec
       {:key key :value (json/generate-string event)}
       (do (warnf "invalid format " line)
