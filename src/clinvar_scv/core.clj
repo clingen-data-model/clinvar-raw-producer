@@ -6,6 +6,7 @@
             [cheshire.core :as json]
             [clojure.string :as s]
             [clojure.core :as core]
+            [clojure.spec.alpha :as spec]
             [clinvar-scv.config :as cfg]
             [taoensso.timbre :as timbre
              :refer [log trace debug info warn error fatal report
@@ -76,15 +77,9 @@
 (defn line-to-event [line entity-type datetime event-type]
   "Parses a single line of a drop file, transforms into an event object map"
   (let [content (assoc (json/parse-string line true) :type entity-type)
-        key (str (:id content) "_" datetime)
-        event {:time datetime :type event-type :content content}
-        has-valid-spec (case entity-type
-                         "clinical_assertion" (spec/valid? ::clinical-assertion content)
-                         true)]
-    (if has-valid-spec
-      {:key key :value (json/generate-string event)}
-      (do (warnf "invalid format " line)
-          ::invalid-record))))
+        key (str entity-type "_" (:id content) "_" datetime)
+        event {:time datetime :type event-type :content content}]
+      {:key key :data event}))
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
