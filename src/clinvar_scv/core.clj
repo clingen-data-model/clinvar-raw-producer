@@ -6,6 +6,7 @@
             [cheshire.core :as json]
             [clojure.string :as s]
             [clojure.core :as core]
+            [clojure.spec.alpha :as spec]
             [clinvar-scv.config :as cfg]
             [taoensso.timbre :as timbre
              :refer [log trace debug info warn error fatal report
@@ -50,6 +51,7 @@
                           {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "Genotype"}}
                           {:type "clinical_assertion_trait"}
                           {:type "clinical_assertion_trait_set"}
+                          {:type "clinical_assertion_observation"}
                           {:type "trait_mapping"}])
 
 (def delete-order-of-processing (reverse order-of-processing))
@@ -75,9 +77,9 @@
 (defn line-to-event [line entity-type datetime event-type]
   "Parses a single line of a drop file, transforms into an event object map"
   (let [content (assoc (json/parse-string line true) :type entity-type)
-                        key (str entity-type "_" (:id content) "_" datetime)
-                        event {:time datetime :type event-type :content content}]
-    {:key key :data event}))
+        key (str entity-type "_" (:id content) "_" datetime)
+        event {:time datetime :type event-type :content content}]
+      {:key key :data event}))
 
 (defn process-clinvar-drop-file
   "return a seq of parsed json messages"
