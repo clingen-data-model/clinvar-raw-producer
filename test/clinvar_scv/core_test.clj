@@ -8,7 +8,8 @@
              ;:refer [log trace debug info warn error fatal report
              ;        logf tracef debugf infof warnf errorf fatalf reportf
              ;        spy get-env]
-             ]))
+             ]
+            [clojure.java.io :as io]))
 
 (deftest bucket-test
   (testing "Ensure bucket is set to correct value"
@@ -19,9 +20,25 @@
 ;    ; Replace with regex validating of message datetime field?
 ;    (is (= 1 1))))
 
+(def release-date "2020-04-01")
+
 (def drop-file-records
   {
-    :gene ""
+    :gene
+    {
+     :processed-clinvar-drop
+     [{
+       :key (str "107984974_" release-date)
+       :value (json/generate-string
+       {
+        :time release-date
+        :type "created"
+        :content (assoc
+                   (json/parse-string (slurp "test/resources/clinvar_scv/drop_files/created/good/gene.json"))
+                  :type "gene")
+        })
+       }]
+     }
     :variation ""
     ;:variation-SimpleAllele ""
     ;:variation-Haplotype ""
@@ -65,6 +82,11 @@
   [pattern col]
   (every? #(re-find (re-pattern pattern) %) col))
 
+(defn unordered-eq?
+  "Returns true if the two collections are equal, regardless of order"
+  [col1 col2]
+  (= (sort col1) (sort col2)))
+
 (defn get-drop-file-records [entity-type]
   (let [contents (slurp (str "test/resources/clinvar_scv/drop_files/created/good/" (str entity-type ".json")))
         lines (s/split-lines contents)]
@@ -72,7 +94,7 @@
     (filter #(< 0 (.length %)) lines)
   ))
 
-(def clinical-assertion-event {:key "clinical_assertion_SCV000924344_2020-01-01T12:00:00Z",          
+(def clinical-assertion-event {:key "clinical_assertion_SCV000924344_2020-01-01T12:00:00Z",
                           :data
                           {:time "2020-01-01T12:00:00Z",
                            :type "create",
@@ -103,6 +125,7 @@
                             :interpretation_date_last_evaluated "2019-06-18",
                             :version "1"}}})
 
+; TODO Update to use all entity-types when spec in clinvar-scv.core is complete
 (deftest test-line-to-event
   (testing "Test processing line-to-event for clinical_assertion"
     (let [line (first (get-drop-file-records "clinical_assertion"))
@@ -115,11 +138,51 @@
       )))
 
 (deftest test-filter-files
-  (testing "Test filtering file list"
-    (let [entity-types (map #(name %) (keys drop-file-records))
-          file-list (map #(str "2020-04-01/" (name %) "/created/00000000") entity-types)]
+  (let [entity-types (map #(name %) (keys drop-file-records))
+        file-list (map #(str "2020-04-01/" (name %) "/created/00000000") entity-types)]
+    (testing "Test filtering file list based on entity-types"
       (doseq [entity-type entity-types]
-        (let [filtered (filter-files entity-type file-list)]
-          (is (match-every? (str "/" entity-type "/") filtered)
-              (str "All entries should contain " entity-type))))
-      )))
+        (let [filtered (filter-files entity-type file-list)
+              path-seg (str "/" entity-type "/")]
+          (is (match-every? path-seg filtered)
+              (str "All entries should contain " path-seg))
+          (is (= 1 (count filtered))
+              "Filtered list should have only 1 element")
+          ))
+      )
+    (testing "Testing filter-files on non-existent entity-types"
+      (is (= [] (filter-files "fake-entity" file-list)))
+      )
+    (testing "Testing filter-files on other path segments"
+      (is (= [] (filter-files "2020-04-01" file-list)))
+      (is (unordered-eq? file-list (filter-files "created" file-list)))
+      (is (= [] (filter-files "00000000" file-list)))
+      )
+    )
+  )
+
+(deftest test-process-clinvar-drop-file
+  (testing "Testing filter-files on non-existent entity-types"
+    ; (defn process-clinvar-drop-file
+    ;  "return a seq of parsed json messages"
+    ;  [{:keys [reader entity-type datetime event-type file-read-limit]
+    ; Returns line-to-event for each line in drop file
+    (let [;entity-types (map #(name %) (keys drop-file-records))
+          entity-types ["gene"]
+          ;file-list (map #(str "test/resources/clinvar_scv/drop_files/good/" % ".json") entity-types)
+          ]
+      ; For each file, open a reader and run process-clinvar-drop-file on it
+      ; check return seq value literals
+      (doseq [entity-type entity-types]
+        (with-open [r (io/reader (str "test/resources/clinvar_scv/drop_files/created/good/" entity-type ".json"))]
+          (let [;lines (filter #(< 0 (.length %)) (line-seq r))
+                ;line-maps (map #(json/parse-string %) lines)
+                expected-value (:processed-clinvar-drop ((keyword entity-type) drop-file-records))
+                actual-value (process-clinvar-drop-file
+                                {:reader r :entity-type entity-type :datetime release-date :event-type "created"})
+                ]
+            (is (= expected-value actual-value))
+            ))
+      )
+    )
+  ))
