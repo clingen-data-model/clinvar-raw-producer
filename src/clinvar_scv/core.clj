@@ -45,14 +45,14 @@
                           {:type "rcv_accession"}
                           {:type "submitter"}
                           {:type "submission"}
-                          {:type "clinical_assertion"}
                           {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "SimpleAllele"}}
                           {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "Haplotype"}}
                           {:type "clinical_assertion_variation" :filter {:field :subclass_type :value "Genotype"}}
                           {:type "clinical_assertion_trait"}
                           {:type "clinical_assertion_trait_set"}
                           {:type "clinical_assertion_observation"}
-                          {:type "trait_mapping"}])
+                          {:type "trait_mapping"}
+                          {:type "clinical_assertion"}])
 
 (def delete-order-of-processing (reverse order-of-processing))
 
