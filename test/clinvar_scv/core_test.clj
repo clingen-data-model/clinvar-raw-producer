@@ -5,7 +5,8 @@
             [cheshire.core :as json]
             [clinvar-scv.config :as cfg]
             [taoensso.timbre :as log]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clinvar-scv.util :refer :all]))
 
 (deftest bucket-test
   (testing "Ensure bucket is set to correct value"
@@ -50,32 +51,6 @@
     :clinical_assertion_observation ""
     :trait_mapping ""
 })
-
-(defn in?
-  "Returns true if e in col"
-  [e col]
-  (some #(= e %) col))
-
-(defn not-in? [e col]
-  (not (in? e col)))
-
-(defn match-in?
-  "Returns true if any e in col matches pattern"
-  [pattern col]
-  (some? (some #(re-find (re-pattern pattern) %) col)))
-
-(defn match-not-in? [pattern col]
-  (not (match-in? pattern col)))
-
-(defn match-every?
-  "Returns true if all e in col matches pattern"
-  [pattern col]
-  (every? #(re-find (re-pattern pattern) %) col))
-
-(defn unordered-eq?
-  "Returns true if the two collections are equal, regardless of order"
-  [col1 col2]
-  (= (sort col1) (sort col2)))
 
 (defn get-drop-file-records [entity-type]
   (let [contents (slurp (str "test/resources/clinvar_scv/drop_files/created/good/" (str entity-type ".json")))
