@@ -3,11 +3,13 @@
             [jackdaw.data :as jd]
             [jackdaw.client.log :as jl]
             [clojure.java.io :as io]
+            [clojure.pprint :as pprint]
             [cheshire.core :as json]
             [clojure.string :as s]
             [clojure.core :as core]
             [clojure.spec.alpha :as spec]
             [clinvar-scv.config :as cfg]
+            [clinvar-scv.spec :as cspec]
             [taoensso.timbre :as timbre
              :refer [log trace debug info warn error fatal report
                      logf tracef debugf infof warnf errorf fatalf reportf
@@ -71,12 +73,14 @@
   (let [blob-id (BlobId/of bucket filename)
         blob (.get gc-storage blob-id)]
     (tracef "Opening reader to blob %s/%s" bucket filename)
-    (with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
-      (rdr))))
+    ;(with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
+    ;  (rdr))
+    (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.)
+    ))
 
-(defn line-to-event [line entity-type datetime event-type]
+(defn line-map-to-event [line-map entity-type datetime event-type]
   "Parses a single line of a drop file, transforms into an event object map"
-  (let [content (assoc (json/parse-string line true) :entity-type entity-type)
+  (let [content (assoc line-map :entity-type entity-type)
         key (str entity-type "_" (:id content) "_" datetime)
         event {:time datetime :type event-type :content content}]
       {:key key :data event}))
@@ -89,8 +93,20 @@
           entity-type event-type)
   (let [lines (line-seq reader)]
     (debugf "Taking first %s lines" file-read-limit)
-      (map #(line-to-event % entity-type datetime event-type) (take file-read-limit lines))))
 
+    (let [events (map #(cspec/validate %)
+                      (map #(line-map-to-event % entity-type datetime event-type)
+                           (map #(json/parse-string % true) (take file-read-limit lines))))]
+      (doseq [event events]
+        (tracef "Event message: %s" event)
+        (if (not-empty (-> event :clojure.spec.alpha/problems))
+          (warnf "Message for entity type %s failed spec: %s"
+                 entity-type
+                 (s/join "," (:clojure.spec.alpha/problems event))))
+        )
+      events
+      )
+    ))
 
 (defn filter-files
   "Filters a collection of file strings containing a path segment which matches `filter-string`"
@@ -103,30 +119,26 @@
 
   ; 1. parse the drop message to determine where the files are
   ; this will return the folder and bucket and file manifest
-  ;... pull out manifest here
-  (debugf "File listing message: %s" (msg))
+  (debugf "File listing message: %s" msg)
   (let [parsed-drop-record (json/parse-string msg true)]
-
     ;; need to verify all entries in manifest are processed else warning and logging on unknown files.
-
     ;; 2. process the folder structure in order of tables for create-update and then reverse for deletes
-    (doseq [procedure event-procedures]
-      (let [files (filter-files (:filter-string procedure) (:files parsed-drop-record))]
 
-        (doseq [record-type (:order procedure)
-                file (filter-files (:type record-type) files)]
-          (let [file-reader (google-storage-line-reader bucket file)]
-            (process-clinvar-drop-file {:reader file-reader
-                                        :entity-type (:type record-type)
-                                        :datetime (:release_date parsed-drop-record)
-                                        :event-type (:event-type procedure)
-                                        :filter-field (:filter record-type)})))))))
-
+      (doseq [procedure event-procedures]
+        (let [files (filter-files (:filter-string procedure) (:files parsed-drop-record))]
+          (doseq [record-type (:order procedure)
+                  file (filter-files (:type record-type) files)]
+            (let [file-reader (google-storage-line-reader bucket file)]
+              (process-clinvar-drop-file {:reader       file-reader
+                                          :entity-type  (:type record-type)
+                                          :datetime     (:release_date parsed-drop-record)
+                                          :event-type   (:event-type procedure)
+                                          :filter-field (:filter record-type)})))))))
 
 (def listen-for-drop (atom true))
 
 (defn process-drop-messages
-  "Process all outstanding messages from input topic"
+  "Process all outstanding messages from messages-to-consume queue"
   [opts]
   (debug "Starting process-drop-messages")
   (with-open [producer (jc/producer (cfg/kafka-config opts))]
@@ -146,6 +158,7 @@
   (debug "Listening for clinvar drop")
   (with-open [consumer (jc/consumer (cfg/kafka-config opts))]
     (jc/subscribe consumer [{:topic-name (:kafka-consumer-topic opts)}])
+    (debug "Subscribed to consumer topic " (:kafka-consumer-topic opts))
     (while true
       (let [msgs (jc/poll consumer 100)]
         (doseq [m msgs]
