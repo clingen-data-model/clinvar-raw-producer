@@ -8,10 +8,8 @@
 (def app-config {:kafka-host     "pkc-4yyd6.us-east1.gcp.confluent.cloud:9092"
                  :kafka-user     (System/getenv "KAFKA_USER")
                  :kafka-password (System/getenv "KAFKA_PASSWORD")
-                 ;:kafka-producer-topic    "clinvar-raw"
-                 ;:kafka-consumer-topic    "broad_dsp_clinvar"
-                 :kafka-producer-topic    "clinvar-raw-test"
-                 :kafka-consumer-topic    "broad_dsp_clinvar_test"
+                 :kafka-producer-topic    "clinvar-raw"
+                 :kafka-consumer-topic    "broad-dsp-clinvar"
                  })
 
 (defn kafka-config
