@@ -16,18 +16,15 @@
             [clinvar-scv.spec.variation :as variation]
             [clinvar-scv.spec.variation-archive :as variation-archive]
 
-            ;[clinvar-scv.spec :refer :all]
-            ;[clinvar-scv.spec.gene :as gene]
+            [taoensso.timbre :as timbre
+             :refer [log trace debug info warn error fatal report
+                     logf tracef debugf infof warnf errorf fatalf reportf
+                     spy get-env]]
             [clojure.string :as s]
             ))
 
 (defn validate [event]
-  ;(println event)
   (let [entity-type (-> event :data :content :entity-type)]
     (merge event
            (spec/explain-data (keyword (str "clinvar-scv.spec." (s/replace entity-type "_" "-"))  (s/replace entity-type "_" "-"))
-                              (-> event :data :content)))
-    ;(println content)
-    ;content
-    ; (merge event (spec/explain-data ::clinical-assertion/clinical-assertion (-> event :data :content))))
-  ))
+                              (-> event :data :content)))))
