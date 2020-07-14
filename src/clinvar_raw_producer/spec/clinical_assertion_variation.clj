@@ -1,7 +1,7 @@
-(ns clinvar-scv.spec.clinical-assertion-variation
+(ns clinvar-raw-producer.spec.clinical-assertion-variation
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]
-            [clinvar-scv.util :refer :all]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]
+            [clinvar-raw-producer.util :refer :all]))
 
 (spec/def ::child_ids #(not (nil? %))) ; can be empty array
 (spec/def ::clinical_assertion_id sa/scv-number?)

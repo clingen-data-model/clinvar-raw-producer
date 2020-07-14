@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.rcv-accession
+(ns clinvar-raw-producer.spec.rcv-accession
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::date_last_evaluated sa/string-is-yyyy-mm-dd?)
 (spec/def ::id #(re-matches #"RCV\d+" %))

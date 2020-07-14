@@ -1,4 +1,4 @@
-(ns clinvar-scv.config
+(ns clinvar-raw-producer.config
   (:require [taoensso.timbre :as timbre])
   (:import java.lang.System)
   (:gen-class))

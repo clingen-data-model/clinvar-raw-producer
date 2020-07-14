@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.submitter
+(ns clinvar-raw-producer.spec.submitter
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::all_abbrevs #(not (nil? %))) ; can be empty array
 (spec/def ::all_names not-empty) ; array must have at least one

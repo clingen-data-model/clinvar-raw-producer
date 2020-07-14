@@ -1,7 +1,7 @@
-(ns clinvar-scv.spec.variation
+(ns clinvar-raw-producer.spec.variation
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]
-            [clinvar-scv.util :refer :all]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]
+            [clinvar-raw-producer.util :refer :all]))
 
 
 (spec/def ::id sa/string-is-int?)

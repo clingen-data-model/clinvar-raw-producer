@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.submission
+(ns clinvar-raw-producer.spec.submission
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::additional_submitter_ids #(not (nil? %))) ; can be empty array
 (spec/def ::id #(re-matches #"[0-9-.]+" %)) ; loose sanity validation of 3.2020-01-01, submitter_id.yyyy-mm-dd

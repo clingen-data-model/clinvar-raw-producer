@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.clinical-assertion
+(ns clinvar-raw-producer.spec.clinical-assertion
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 ; Required
 (spec/def ::assertion_type not-empty) ; required string

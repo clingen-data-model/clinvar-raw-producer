@@ -1,7 +1,7 @@
-(ns clinvar-scv.spec.gene-association
+(ns clinvar-raw-producer.spec.gene-association
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]
-            [clinvar-scv.util :refer :all]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]
+            [clinvar-raw-producer.util :refer :all]))
 
 (spec/def ::gene_id sa/string-is-int?)
 (spec/def ::relationship_type not-empty)

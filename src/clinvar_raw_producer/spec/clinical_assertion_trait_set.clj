@@ -1,4 +1,4 @@
-(ns clinvar-scv.spec.clinical-assertion-trait-set
+(ns clinvar-raw-producer.spec.clinical-assertion-trait-set
   (:require [clojure.spec.alpha :as spec]))
 
 (spec/def ::clinical_assertion_trait_ids not-empty)
