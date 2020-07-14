@@ -85,7 +85,7 @@
 
 (defn line-map-to-event [line-map entity-type datetime event-type]
   "Parses a single line of a drop file, transforms into an event object map"
-  (let [content (assoc line-map :entity-type entity-type)
+  (let [content (assoc line-map :entity_type entity-type)
         key (str entity-type "_" (:id content) "_" datetime)
         event {:time datetime :type event-type :content content}]
       {:key key :data event}))
