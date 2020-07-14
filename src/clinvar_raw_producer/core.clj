@@ -1,4 +1,4 @@
-(ns clinvar-scv.core
+(ns clinvar-raw-producer.core
   (:require [jackdaw.client :as jc]
             [jackdaw.data :as jd]
             [jackdaw.client.log :as jl]
@@ -8,13 +8,13 @@
             [clojure.string :as s]
             [clojure.core :as core]
             [clojure.spec.alpha :as spec]
-            [clinvar-scv.config :as cfg]
-            [clinvar-scv.spec :as cspec]
             [taoensso.timbre :as timbre
              :refer [log trace debug info warn error fatal report
                      logf tracef debugf infof warnf errorf fatalf reportf
                      spy get-env]]
-            [clojure.core.async :as async :refer [>!! <!!]])
+            [clojure.core.async :as async :refer [>!! <!!]]
+            [clinvar-raw-producer.config :as cfg]
+            [clinvar-raw-producer.spec :as cspec])
   (:import [com.google.cloud.storage Storage StorageOptions BlobId Blob]
            com.google.cloud.storage.Blob$BlobSourceOption
            java.nio.channels.Channels
@@ -81,8 +81,6 @@
   (let [blob-id (BlobId/of bucket filename)
         blob (.get gc-storage blob-id)]
     (debugf "Obtaining reader to blob %s/%s" bucket filename)
-    ;(with-open [rdr (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.) ]
-    ;  rdr)))
     (-> blob (.reader (make-array Blob$BlobSourceOption 0)) (Channels/newReader "UTF-8") BufferedReader.)))
 
 (defn line-map-to-event [line-map entity-type datetime event-type]

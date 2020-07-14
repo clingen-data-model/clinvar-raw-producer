@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.gene
+(ns clinvar-raw-producer.spec.gene
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::full_name not-empty)
 (spec/def ::id sa/string-is-int?)

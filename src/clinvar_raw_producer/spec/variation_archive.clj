@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.variation-archive
+(ns clinvar-raw-producer.spec.variation-archive
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::date_created sa/string-is-yyyy-mm-dd?)
 (spec/def ::date_last_updated sa/string-is-yyyy-mm-dd?)

@@ -1,4 +1,4 @@
-(ns clinvar-scv.spec.clinical-assertion-observation
+(ns clinvar-raw-producer.spec.clinical-assertion-observation
   (:require [clojure.spec.alpha :as spec]))
 
 ; TODO 93.6% null

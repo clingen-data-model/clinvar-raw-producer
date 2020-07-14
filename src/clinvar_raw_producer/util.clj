@@ -1,4 +1,4 @@
-(ns clinvar-scv.util
+(ns clinvar-raw-producer.util
   (:gen-class))
 
 (defn in?

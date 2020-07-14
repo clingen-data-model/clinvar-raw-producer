@@ -15,8 +15,8 @@ RUN lein uberjar
 FROM openjdk:11
 MAINTAINER Kyle Ferriter <kferrite@broadinstitute.org>
 
-COPY --from=builder /usr/src/app/target/uberjar/clinvar-scv.jar /app/clinvar-scv.jar
+COPY --from=builder /usr/src/app/target/uberjar/clinvar-raw-producer.jar /app/clinvar-raw-producer.jar
 
 EXPOSE 8888
 
-CMD ["java", "-jar", "/app/clinvar-scv.jar"]
+CMD ["java", "-jar", "/app/clinvar-raw-producer.jar"]

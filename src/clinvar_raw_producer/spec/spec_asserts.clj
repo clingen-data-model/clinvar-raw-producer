@@ -1,4 +1,4 @@
-(ns clinvar-scv.spec.spec-asserts
+(ns clinvar-raw-producer.spec.spec-asserts
   (:require [clojure.spec.alpha :as spec]))
 
 (defn string-is-int?

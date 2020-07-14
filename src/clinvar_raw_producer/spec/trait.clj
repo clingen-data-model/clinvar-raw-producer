@@ -1,6 +1,6 @@
-(ns clinvar-scv.spec.trait
+(ns clinvar-raw-producer.spec.trait
   (:require [clojure.spec.alpha :as spec]
-            [clinvar-scv.spec.spec-asserts :as sa]))
+            [clinvar-raw-producer.spec.spec-asserts :as sa]))
 
 (spec/def ::alternate_names #(not (nil? %))) ; can be empty array
 (spec/def ::alternate_symbols #(not (nil? %))) ; can be empty array
