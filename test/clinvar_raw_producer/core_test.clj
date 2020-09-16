@@ -4,8 +4,7 @@
             [cheshire.core :as json]
             [taoensso.timbre :as log]
             [clojure.java.io :as io]
-            [clojure.core.async :as async :refer [>!! <!!]]
-            ;; [clinvar-raw-producer.config :as cfg]
+            [clojure.core.async :as async :refer [>!! <!! poll!]]
             [clinvar-raw-producer.core :as core]
             [clinvar-raw-producer.util :as util]))
 
@@ -139,6 +138,7 @@
         (with-open [r (io/reader (str "test/resources/drop_files/created/good/" entity-type ".json"))]
           (let [expected-value (:processed-clinvar-drop ((keyword entity-type) drop-file-records))]
             (core/process-clinvar-drop-file {:reader r :entity-type entity-type :datetime release-date :event-type "created"})
+            (Thread/sleep 100) ; TODO put spin
             (let [actual-value (<!! (async/into [] (async/take (count expected-value) core/producer-channel)))]
               (println actual-value)
               (is (= expected-value actual-value)))
