@@ -18,7 +18,7 @@
 (spec/def ::trait_set_id not-empty)
 
 (spec/def ::rcv-accession
-  (spec/keys :req-un [::date_last_evaluated
+  (spec/keys :req-un [::date_last_evaluated ; TODO not always present
                       ::id
                       ::interpretation
                       ::review_status

@@ -24,7 +24,7 @@
             ))
 
 (defn validate [event]
-  (let [entity-type (-> event :data :content :entity-type)]
+  (let [entity-type (-> event :data :content :entity_type)]
     (merge event
            (spec/explain-data (keyword (str "clinvar-raw-producer.spec." (s/replace entity-type "_" "-"))  (s/replace entity-type "_" "-"))
                               (-> event :data :content)))))

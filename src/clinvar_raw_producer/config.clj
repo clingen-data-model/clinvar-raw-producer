@@ -26,7 +26,7 @@
    "value.serializer"                      "org.apache.kafka.common.serialization.StringSerializer"
    "key.deserializer"                      "org.apache.kafka.common.serialization.StringDeserializer"
    "value.deserializer"                    "org.apache.kafka.common.serialization.StringDeserializer"
-   "group.id"                              "dsp_clinvar_drop"
+   "group.id"                              "clinvar-raw-producer"
    "sasl.jaas.config"                      (str "org.apache.kafka.common.security.plain.PlainLoginModule required username=\""
                                                 (:kafka-user opts) "\" password=\"" (:kafka-password opts) "\";")})
 
