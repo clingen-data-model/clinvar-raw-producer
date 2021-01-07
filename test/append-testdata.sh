@@ -43,12 +43,18 @@ variation_id="$3"
 
 # NOTE: above we cd to the source_dir so the rysnce commands will work from the current directory '.'
 # this command updates the directory structure in the target directory to mirror the source directory without any copying any files
-rsync -rRu  --include={'created/','updated/','deleted/'} --include={'var*/','rcv*/','clinical*/','gene*/','trait*/','subm*/'} --include '20*/' --exclude '*' . $target_dir
+rsync -rRu --quiet  --include={'created/','updated/','deleted/'} --include={'var*/','rcv*/','clinical*/','gene*/','trait*/','subm*/'} --include '20*/' --exclude '*' . $target_dir
 
 record_log="${target_dir}/record.log"
 if [[ (! -f $record_log ) ]]; then
     touch $record_log
-    echo '${record_log} created.'
+    echo "${record_log} created."
+fi
+
+variant_log="${target_dir}/variant.log"
+if [[ (! -f $variant_log ) ]]; then
+    touch $variant_log
+    echo "${variant_log} created."
 fi
 
 # this loops through all the 0000* files in the source directory and creates an empty parallel file in the target directory
@@ -57,13 +63,11 @@ find 20*/ -name '0000*' | while read filename; do
     out_file="${target_dir}/${filename}"
     if [ ! -f $out_file ]; then
         touch $out_file
-        echo $filename
     fi
 done;
 
-# update all release_date.txt, gene, trait, trait_set, submission and submitter files to assure they are in sync with the baseline set.
-#rsync -rmRd  --include={'0000*','release_date.txt'} --include={'created/','updated/','deleted/'} --include={'gene/','trait/','trait_set/','subm*/'} --include '20*/' --exclude '*' . $target_dir
-rsync -rmRu  --include={'0000*','release_date.txt'} --include={'created/','updated/','deleted/'} --include={'gene/','trait/','trait_set/','subm*/'} --include '20*/' --exclude '*' . $target_dir
+# append all release_date.txt, gene, trait, trait_set, submission and submitter files to assure they are in sync with the baseline set.
+rsync -rmRq  --append --include={'0000*','release_date.txt'} --include={'created/','updated/','deleted/'} --include={'gene/','trait/','trait_set/','subm*/'} --include '20*/' --exclude '*' . $target_dir
 
 # create a tmp folder within the target_dir to keep working files used below, presumes we are still working in the source_dir
 tmpdir="${target_dir}/tmp"
@@ -73,8 +77,10 @@ if [[ ( -e $tmpdir )]]; then
 fi
 mkdir $tmpdir
 
+printf "Finding all records releated to variant id: $variation_id ...processing.\n"
+
 # read file with list of variation ids to be loaded and load them.
-# e.g. 12610, 3520, 37594, 46503, 48176, 7884
+# e.g. 8152, 12610, 3520, 37594, 46503, 48176, 7884
 primary_var_id=$variation_id
 pcre2grep -n -e "\"id\"\:\"$primary_var_id\"" -r 20*/variation/ *.json > $tmpdir/variation_records.txt
 echo $primary_var_id > $tmpdir/variant_ids.txt
@@ -83,53 +89,77 @@ variant_list=$( pcre2grep -o1 -e "(\d+)" $tmpdir/variant_ids.txt | sort | uniq |
 
 # build *.out files to collect all records from all *.json files in source_directory
 # variation & gene_association records related to any of the $variant_list variation ids.
+printf "processing variations..."
 pcre2grep -n -e "\"id\"\:\"$variant_list\"" -r 20*/variation/ *.json > $tmpdir/variation.out
+printf "done.\nprocessing gene_associations..."
 pcre2grep -n -e "\"variation_id\"\:\"$variant_list\"" -r 20*/gene_association/ *.json > $tmpdir/gene_association.out
+printf "done.\nprocessing variation_archives..."
 # vcv, rcv and scv records related ONLY to the primary $variation_id.
 pcre2grep -n -e "\"variation_id\"\:\"$primary_var_id\"" -r 20*/variation_archive/ *.json > $tmpdir/variation_archive.out
+printf "done.\nprocessing rcv_accessions..."
 pcre2grep -n -e "\"variation_id\"\:\"$primary_var_id\"" -r 20*/rcv_accession/ *.json > $tmpdir/rcv_accession.out
+printf "done.\nprocessing clinical_assertions..."
 pcre2grep -n -e "\"variation_id\"\:\"$primary_var_id\"" -r 20*/clinical_assertion/ *.json  > $tmpdir/clinical_assertion.out
 
 # extract all scvids over time from the clinical_assertion results above to build an appropriate regex filter for the subsequent statements.
 scv_list=$( pcre2grep -o1 -e "\"id\"\:\"(SCV[0-9]*)\"" $tmpdir/clinical_assertion.out | sort | uniq | sed -e :a -e '$!N; s/\n/|/; ta' | awk '{print "("$0")"}' )
 
 # get all related SCV records
+printf "done.\nprocessing clinical_assertion_trait_sets..."
 pcre2grep -n -e "$scv_list" -r 20*/clinical_assertion_trait_set/ *.json > $tmpdir/clinical_assertion_trait_set.out
+printf "done.\nprocessing clinical_assertion_traits..."
 pcre2grep -n -e "$scv_list" -r 20*/clinical_assertion_trait/ *.json > $tmpdir/clinical_assertion_trait.out
+printf "done.\nprocessing clinical_assertion_variations..."
 pcre2grep -n -e "$scv_list" -r 20*/clinical_assertion_variation/ *.json > $tmpdir/clinical_assertion_variation.out
+printf "done.\nprocessing clinical_assertion_observations..."
 pcre2grep -n -e "$scv_list" -r 20*/clinical_assertion_observation/ *.json > $tmpdir/clinical_assertion_observation.out
+printf "done.\nprocessing trait_mappings..."
 pcre2grep -n -e "$scv_list" -r 20*/trait_mapping/ *.json > $tmpdir/trait_mapping.out
+printf "done.\n"
 
 # loop through *.out files in tmpdir and write contents to corresponding
 # file in target_dir
 for file in $tmpdir/*.out; do
-    echo $file
+
+    last_ds=""
     while read -r line; do
 
         # parse out target_file, line# and json line
         # example line: 0201010/variation_archive//updated/000000000000:34094:{...}"
-        if [[ "$line" =~ ((.*/00000000000[0-9])\:([0-9]+))\:(.+) ]]; then
-            target_file="${target_dir}/${BASH_REMATCH[2]}"
+
+        if [[ "$line" =~ ((.*)(00000000000[0-9])\:([0-9]+))\:(.+) ]]; then
+
+            data_set="${BASH_REMATCH[2]}/${BASH_REMATCH[3]}"
+            target_file="${target_dir}/${data_set}"
+            if [[ "$data_set" != "$last_ds" ]]; then
+                printf "\nDataset: $data_set ..."
+                last_ds=$data_set
+            else
+                printf ","
+            fi
 
             if [[ ( ! -f $target_file ) ]]; then
+                echo
+                echo
                 echo "${target_file} is not a valid file"
                 echo
                 echo "Processing halted and incomplete. Record intergrity compromised."
                 exit 1
             else
-                #
                 key="${BASH_REMATCH[1]//\//\\/}"
                 key="${key//:/\\:}"
-                echo "${key}"
 
                 if grep -q $key $record_log; then
-                    echo "Already exists in file."
+                    printf " ${BASH_REMATCH[4]}(\xE2\x9C\x94)"
                 else
+                    printf " ${BASH_REMATCH[4]}(+)"
                     echo "${BASH_REMATCH[1]}" >> $record_log
-                    echo "${BASH_REMATCH[4]}" >> $target_file
+                    echo "${BASH_REMATCH[5]}" >> $target_file
                 fi
             fi
         else
+            echo
+            echo
             echo "ERROR: NO MATCH!!!!!!"
             echo
             echo "Processing halted and incomplete. Record intergrity compromised."
@@ -138,5 +168,10 @@ for file in $tmpdir/*.out; do
     done < $file
 done
 
+# capture a log of all the variants that have been processed in this run
+pcre2grep -o1 -e "(\d+)" ../x/tmp/variant_ids.txt | sort | uniq >> $variant_log
+
 # remove tmpdir
 #rm -fR $tmpdir
+
+printf "\n\nCompleted!\n"
